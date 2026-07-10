@@ -69,7 +69,7 @@ export class PoseEngine {
 
     try {
       const poses = await this._detector.estimatePoses(videoElement, {
-        flipHorizontal: false,
+        flipHorizontal: true,  // 미러링된 video 표시에 맞게 x좌표 반전
       });
       this._lastPose = poses.length > 0 ? poses[0] : null;
     } catch {

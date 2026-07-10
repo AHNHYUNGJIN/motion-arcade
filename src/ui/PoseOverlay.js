@@ -111,12 +111,8 @@ export class PoseOverlay {
     const scaleX = canvas.width  / (videoWidth  || canvas.width);
     const scaleY = canvas.height / (videoHeight || canvas.height);
 
-    /**
-     * 비디오는 CSS로 scaleX(-1) 미러링되어 있으므로
-     * 캔버스 좌표도 x를 반전해야 화면과 일치함.
-     * 반전: canvasX = canvas.width - (kp.x * scaleX)
-     */
-    const toCanvasX = (kpX) => canvas.width - (kpX * scaleX);
+    // flipHorizontal:true 로 MoveNet이 이미 좌표를 반전하므로 추가 반전 불필요
+    const toCanvasX = (kpX) => kpX * scaleX;
     const toCanvasY = (kpY) => kpY * scaleY;
 
     // ── 스켈레톤 선 ────────────────────────────────
