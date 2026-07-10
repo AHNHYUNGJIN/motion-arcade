@@ -402,8 +402,7 @@ body {
   text-shadow: var(--text-glow-cyan);
   letter-spacing: 0.05em;
   line-height: 1;
-  tabular-nums: lining;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .score-display__label {

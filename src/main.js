@@ -31,9 +31,14 @@ const GAME_MAP = {
   'jump-challenge': JumpChallenge,
 };
 
+/* ── 최고 점수 (localStorage 영구 저장) ──────────────── */
+const _savedScores = (() => {
+  try { return JSON.parse(localStorage.getItem('motion-arcade-scores') || '{}'); } catch { return {}; }
+})();
 const bestScores = {
   'space-pong': 0, 'fruit-slicer': 0,
   'obstacle-dodge': 0, 'jump-challenge': 0,
+  ..._savedScores,
 };
 
 /* ── 포즈 캐시 ─────────────────────────────────────── */
@@ -60,39 +65,32 @@ async function init() {
   showLoadingScreen();
 
   try {
-    // 1. 카메라 — Camera.init(container) 시그니처
     setLoadingStatus('카메라 초기화 중…', 10);
     camera = new Camera();
-    await camera.init(videoLayer);          // videoLayer div를 컨테이너로 전달
-    videoEl = camera.videoElement;          // Camera가 만든 video 엘리먼트 참조
+    await camera.init(videoLayer);
+    videoEl = camera.videoElement;
     setLoadingStatus('카메라 준비 완료', 30);
 
-    // 2. PoseEngine — init() 시그니처 (모바일: frameSkip 2)
     setLoadingStatus('AI 포즈 엔진 로딩 중…', 40);
     const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
     poseEngine = new PoseEngine({ frameSkip: isMobile ? 2 : 1 });
     await poseEngine.init();
     setLoadingStatus('포즈 엔진 준비 완료', 70);
 
-    // 3. GestureRecognizer — 비디오 해상도 전달
     setLoadingStatus('제스처 인식 초기화 중…', 80);
     const vw = videoEl.videoWidth  || 640;
     const vh = videoEl.videoHeight || 480;
     gestureRecognizer = new GestureRecognizer(vw, vh);
     setLoadingStatus('준비 완료!', 100);
 
-    // 4. UI 초기화
     poseOverlay = new PoseOverlay(poseCanvas);
     mainMenu    = new MainMenu(uiLayer);
     gameHUD     = new GameHUD(uiLayer);
-    gameLoop    = new GameLoop();           // 인자 없음
+    gameLoop    = new GameLoop();
 
     registerVisibilityHandlers();
-
-    // 5. 포즈 감지 루프 시작 (게임 루프와 분리)
     startPoseLoop();
 
-    // 6. 캘리브레이션
     await delay(400);
     hideLoadingScreen();
     startCalibration();
@@ -116,9 +114,7 @@ function startPoseLoop() {
       try {
         const pose = await poseEngine.detect(videoEl);
         latestPose = pose;
-        if (gestureRecognizer && pose) {
-          gestureRecognizer.update(pose);
-        }
+        if (gestureRecognizer && pose) gestureRecognizer.update(pose);
       } catch { /* 프레임 드랍 허용 */ }
     }
 
@@ -140,31 +136,33 @@ function buildDOM() {
   }
   appEl.style.cssText = 'position:fixed;inset:0;overflow:hidden;background:#0a0a1a;';
 
-  // z-index 0 — 카메라 비디오 컨테이너 (Camera.init() 이 video를 여기에 추가)
   videoLayer = getOrCreate(appEl, 'div', 'video-layer');
   videoLayer.style.cssText = 'position:absolute;inset:0;z-index:0;overflow:hidden;';
 
-  // z-index 1 — 게임 캔버스
   const gameLayer = getOrCreate(appEl, 'div', 'game-canvas-layer');
   gameLayer.style.cssText = 'position:absolute;inset:0;z-index:1;';
   gameCanvas = getOrCreate(gameLayer, 'canvas', 'game-canvas');
   gameCanvas.style.cssText = 'width:100%;height:100%;display:block;';
   syncCanvas(gameCanvas);
 
-  // z-index 2 — 포즈 오버레이 캔버스
   const poseLayer = getOrCreate(appEl, 'div', 'pose-canvas-layer');
   poseLayer.style.cssText = 'position:absolute;inset:0;z-index:2;pointer-events:none;';
   poseCanvas = getOrCreate(poseLayer, 'canvas', 'pose-canvas');
   poseCanvas.style.cssText = 'width:100%;height:100%;display:block;';
   syncCanvas(poseCanvas);
 
-  // z-index 3 — UI (메뉴, HUD 등)
   uiLayer = getOrCreate(appEl, 'div', 'ui-layer');
   uiLayer.style.cssText = 'position:absolute;inset:0;z-index:3;';
 
   window.addEventListener('resize', () => {
     syncCanvas(gameCanvas);
     syncCanvas(poseCanvas);
+    // 실행 중인 게임의 논리 크기 갱신
+    if (currentGame) {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      currentGame.width  = gameCanvas.width  / dpr;
+      currentGame.height = gameCanvas.height / dpr;
+    }
   });
 }
 
@@ -183,7 +181,6 @@ function startCalibration() {
   calibration = new Calibration(uiLayer, poseCanvas);
   calibration.start(
     (calibData) => {
-      // 캘리브레이션 완료 → GestureRecognizer 기준점 설정
       if (calibData && gestureRecognizer && latestPose) {
         gestureRecognizer.calibrate(latestPose);
       }
@@ -191,7 +188,7 @@ function startCalibration() {
       calibration = null;
       showMenu();
     },
-    () => latestPose   // Calibration이 포즈를 폴링할 함수
+    () => latestPose
   );
 }
 
@@ -215,19 +212,18 @@ function startGame(gameId) {
   setState('game');
   currentGame?.destroy?.();
 
-  // Canvas 크기 동기화
+  // DPR을 적용한 CSS 논리 픽셀 크기를 게임에 전달
   syncCanvas(gameCanvas);
-  const w = gameCanvas.width;
-  const h = gameCanvas.height;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = gameCanvas.width  / dpr;
+  const h = gameCanvas.height / dpr;
 
-  // GameClass(canvas, width, height) 시그니처
   currentGame = new GameClass(gameCanvas, w, h);
   currentGame.init();
   currentGameId = gameId;
 
-  gameHUD.show(gameId);
+  gameHUD.show(gameId, currentGame.livesMax);
   gameHUD.showCountdown(3, () => {
-    // GameLoop.start(updateFn, drawFn) 시그니처
     gameLoop.start(gameUpdate, gameDraw);
   });
 }
@@ -236,10 +232,9 @@ function startGame(gameId) {
 function gameUpdate(dt) {
   if (appState !== 'game' || !currentGame) return;
 
-  // gesture 객체 조립 (GestureRecognizer는 getter 기반)
   const gesture = gestureRecognizer ? {
-    bodyX:    gestureRecognizer.bodyX,
-    bodyLean: gestureRecognizer.bodyLean,
+    bodyX:     gestureRecognizer.bodyX,
+    bodyLean:  gestureRecognizer.bodyLean,
     isJumping: gestureRecognizer.isJumping,
     leftHand:  gestureRecognizer.leftHand,
     rightHand: gestureRecognizer.rightHand,
@@ -247,7 +242,6 @@ function gameUpdate(dt) {
 
   currentGame.update(dt, gesture);
 
-  // 게임오버 감지 (게임에서 콜백 없이 isGameOver 플래그로 처리)
   if (currentGame.isGameOver) {
     endGame(currentGameId, currentGame.score);
   }
@@ -256,14 +250,18 @@ function gameUpdate(dt) {
 function gameDraw() {
   if (appState !== 'game' || !currentGame) return;
 
-  syncCanvas(gameCanvas);
+  // DPR 스케일 적용: 게임이 CSS 픽셀 좌표계에서 그리도록 함
+  const dpr = syncCanvas(gameCanvas);
+  const ctx  = gameCanvas.getContext('2d');
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   currentGame.draw();
+  ctx.restore();
 
-  // HUD 업데이트
+  // DOM HUD: 라이프 + FPS
   gameHUD.update({
-    score:    currentGame.score,
-    timeLeft: currentGame.timeLeft,
-    fps:      gameLoop.fps,
+    lives: currentGame.lives,
+    fps:   gameLoop.fps,
   });
 
   // 포즈 오버레이
@@ -281,6 +279,7 @@ function endGame(gameId, score) {
 
   if (score > (bestScores[gameId] ?? 0)) {
     bestScores[gameId] = score;
+    try { localStorage.setItem('motion-arcade-scores', JSON.stringify(bestScores)); } catch {}
   }
 
   gameHUD.showGameOver(
@@ -380,17 +379,23 @@ function getOrCreate(parent, tag, id) {
   return el;
 }
 
+/**
+ * 캔버스를 DPR 기반 device px 크기로 동기화.
+ * 반환값 dpr을 ctx.setTransform(dpr,0,0,dpr,0,0)에 사용하면
+ * 게임이 CSS 픽셀 좌표계로 동작하고 폰트/좌표가 모든 DPR에서 올바른 크기로 표시됨.
+ */
 function syncCanvas(canvas) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const parent = canvas.parentElement;
-  if (!parent) return;
+  if (!parent) return dpr;
   const { width, height } = parent.getBoundingClientRect();
-  const w = Math.round(width * dpr);
+  const w = Math.round(width  * dpr);
   const h = Math.round(height * dpr);
   if (canvas.width !== w || canvas.height !== h) {
     canvas.width  = w;
     canvas.height = h;
   }
+  return dpr;
 }
 
 function isPermissionError(err) {

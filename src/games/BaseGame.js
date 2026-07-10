@@ -28,9 +28,11 @@ export class BaseGame {
     this._particles = [];
   }
 
-  get score() { return this._score; }
+  get score()    { return this._score; }
   get isGameOver() { return this._gameOver; }
   get timeLeft() { return Math.max(0, this._timeLeft); }
+  get lives()    { return (typeof this._lives    === 'number') ? this._lives    : null; }
+  get livesMax() { return (typeof this._livesMax === 'number') ? this._livesMax : null; }
 
   _drawText(text, x, y, opts = {}) {
     const ctx = this.ctx;

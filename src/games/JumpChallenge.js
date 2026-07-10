@@ -181,7 +181,6 @@ export class JumpChallenge extends BaseGame {
     }
 
     this._obstacles = this._obstacles.filter(o => o.x > -100);
-    this._updateParticles(dt);
   }
 
   draw() {

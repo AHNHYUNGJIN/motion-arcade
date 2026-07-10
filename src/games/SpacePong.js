@@ -10,7 +10,8 @@ const STAR_COUNT = 80;
 export class SpacePong extends BaseGame {
   constructor(canvas, width, height) {
     super(canvas, width, height);
-    this._lives = LIVES_MAX;
+    this._lives    = LIVES_MAX;
+    this._livesMax = LIVES_MAX;
     this._paddleX = width / 2;
     this._ballX = width / 2;
     this._ballY = height * 0.3;
@@ -178,25 +179,11 @@ export class SpacePong extends BaseGame {
   }
 
   _drawHUD() {
-    const ctx = this.ctx;
-    // score
     this._drawText(`${this._score}`, this.width / 2, 18, {
       size: 28, align: 'center', color: '#00ffff', glow: '#00ffff',
     });
-    // timer
     this._drawText(`${Math.ceil(this.timeLeft)}s`, this.width - 12, 18, {
       size: 18, align: 'right', color: '#ffffff88',
     });
-    // lives
-    for (let i = 0; i < LIVES_MAX; i++) {
-      const col = i < this._lives ? '#ff4488' : '#333355';
-      ctx.save();
-      ctx.shadowColor = col;
-      ctx.shadowBlur = i < this._lives ? 10 : 0;
-      ctx.fillStyle = col;
-      ctx.font = '20px monospace';
-      ctx.fillText('♥', 12 + i * 26, 14);
-      ctx.restore();
-    }
   }
 }

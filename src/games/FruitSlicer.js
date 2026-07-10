@@ -1,7 +1,7 @@
 import { BaseGame } from './BaseGame.js';
 
 const TRAIL_LEN = 10;
-const SLICE_SPEED = 0.3;
+const SLICE_SPEED = 0.06;
 const FRUIT_COLORS = ['#ff3333', '#33ff66', '#3388ff', '#ffdd00', '#ff88ff'];
 const FRUIT_LABELS = ['🍎', '🍉', '🍇', '🍋', '🍓'];
 const MISS_LIMIT = 3;
@@ -18,7 +18,8 @@ export class FruitSlicer extends BaseGame {
     this._slices = [];
     this._trailL = [];
     this._trailR = [];
-    this._lives = LIVES_MAX;
+    this._lives    = LIVES_MAX;
+    this._livesMax = LIVES_MAX;
     this._missed = 0;
     this._spawnTimer = 0;
     this._spawnInterval = 1.4;
@@ -159,13 +160,15 @@ export class FruitSlicer extends BaseGame {
       if (!item.sliced && item.y < -60 && item.vy < 0) {
         // already going down, skip
       }
-      if (!item.sliced && item.y > this.height + 60 && !item.isBomb) {
-        item.sliced = true; // mark dead
-        this._missed++;
-        if (this._missed >= MISS_LIMIT) {
-          this._missed = 0;
-          this._lives--;
-          if (this._lives <= 0) this._gameOver = true;
+      if (!item.sliced && item.y > this.height + 60) {
+        item.sliced = true;
+        if (!item.isBomb) {
+          this._missed++;
+          if (this._missed >= MISS_LIMIT) {
+            this._missed = 0;
+            this._lives--;
+            if (this._lives <= 0) this._gameOver = true;
+          }
         }
       }
     }
@@ -295,19 +298,7 @@ export class FruitSlicer extends BaseGame {
     this._drawText(`${Math.ceil(this.timeLeft)}s`, this.width - 12, 18, {
       size: 18, align: 'right', color: '#ffffff88',
     });
-    for (let i = 0; i < LIVES_MAX; i++) {
-      const col = i < this._lives ? '#ff4488' : '#33221A';
-      const ctx = this.ctx;
-      ctx.save();
-      ctx.shadowColor = col;
-      ctx.shadowBlur = i < this._lives ? 10 : 0;
-      ctx.fillStyle = col;
-      ctx.font = '20px monospace';
-      ctx.fillText('♥', 12 + i * 26, 14);
-      ctx.restore();
-    }
-    // miss counter
-    this._drawText(`miss ${this._missed}/${MISS_LIMIT}`, 12, 42, {
+    this._drawText(`miss ${this._missed}/${MISS_LIMIT}`, 12, 18, {
       size: 13, color: '#ff884488',
     });
   }

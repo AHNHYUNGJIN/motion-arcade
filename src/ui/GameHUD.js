@@ -1,52 +1,41 @@
 /**
  * GameHUD.js
  * 게임 HUD UI 컴포넌트
- * - 좌상단: 점수
- * - 우상단: 남은 시간 (MM:SS)
- * - 좌하단: 목숨 (하트)
- * - 우하단: FPS
- * - 중앙: 카운트다운 오버레이
- * - 게임오버: 반투명 결과 오버레이
+ *
+ * 점수/타이머는 각 게임이 canvas에 직접 렌더링하므로 DOM HUD에서 제거.
+ * DOM HUD 담당: 목숨(lives), FPS, 카운트다운 오버레이, 게임오버 오버레이.
  */
 
-const MAX_LIVES  = 5;
 const HEART_FULL = '❤️';
 const HEART_LOST = '🖤';
 
-/** 초 → MM:SS */
-function formatTime(seconds) {
-  const s = Math.max(0, Math.round(seconds));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
-}
-
 export class GameHUD {
-  /**
-   * @param {HTMLElement} container
-   */
   constructor(container) {
     this._container      = container;
     this._root           = null;
     this._countdownTimer = null;
     this._visible        = false;
-    this._gameId         = null;
-
-    // 캐시된 DOM 참조
-    this._els = {};
+    this._livesMax       = null;
+    this._els            = {};
   }
 
   /* ── public API ──────────────────────────────────── */
 
   /**
    * HUD 표시 (게임 시작 시 호출)
-   * @param {string} gameId
+   * @param {string}      gameId
+   * @param {number|null} livesMax - null이면 목숨 UI 숨김
    */
-  show(gameId) {
-    this._gameId = gameId;
-    if (!this._root) {
-      this._render();
+  show(gameId, livesMax = null) {
+    this._livesMax = livesMax;
+    if (!this._root) this._render();
+
+    const livesBlock = this._els.livesBlock;
+    if (livesBlock) livesBlock.style.display = livesMax ? 'flex' : 'none';
+    if (this._els.lives && livesMax) {
+      this._els.lives.innerHTML = this._renderHearts(livesMax, livesMax);
     }
+
     this._root.style.display    = 'block';
     this._root.style.opacity    = '0';
     this._root.style.transition = 'opacity 0.3s ease';
@@ -56,7 +45,6 @@ export class GameHUD {
     this._visible = true;
   }
 
-  /** HUD 숨기기 */
   hide() {
     if (!this._root) return;
     this._root.style.transition = 'opacity 0.25s ease';
@@ -69,32 +57,14 @@ export class GameHUD {
   }
 
   /**
-   * HUD 데이터 업데이트 (매 프레임 또는 상태 변경 시)
-   * @param {{ score?: number, lives?: number, timeLeft?: number, fps?: number }} data
+   * HUD 데이터 업데이트 (매 프레임)
+   * @param {{ lives?: number|null, fps?: number }} data
    */
-  update({ score, lives, timeLeft, fps } = {}) {
+  update({ lives, fps } = {}) {
     if (!this._visible || !this._root) return;
 
-    if (score !== undefined) {
-      const el = this._els.score;
-      if (el) el.textContent = String(score).padStart(6, '0');
-    }
-
-    if (lives !== undefined) {
+    if (lives !== undefined && lives !== null && this._livesMax) {
       this._updateLives(lives);
-    }
-
-    if (timeLeft !== undefined) {
-      const el = this._els.timer;
-      if (el) {
-        el.textContent = formatTime(timeLeft);
-        // 10초 이하 urgent 표시
-        if (timeLeft <= 10) {
-          el.classList.add('urgent');
-        } else {
-          el.classList.remove('urgent');
-        }
-      }
     }
 
     if (fps !== undefined) {
@@ -105,37 +75,31 @@ export class GameHUD {
 
   /**
    * 카운트다운 표시 (3 → 2 → 1 → GO!)
-   * @param {number} n   - 시작 숫자 (보통 3)
-   * @param {() => void} onDone
+   * @param {number}      n
+   * @param {() => void}  onDone
    */
   showCountdown(n = 3, onDone) {
     this._clearCountdown();
 
     const overlay = this._els.countdown;
     const numEl   = this._els.countdownNum;
-    if (!overlay || !numEl) {
-      onDone?.();
-      return;
-    }
+    if (!overlay || !numEl) { onDone?.(); return; }
 
     overlay.style.display = 'flex';
     overlay.style.opacity = '1';
-
     let current = n;
 
     const tick = () => {
       if (current > 0) {
-        numEl.className = 'countdown__number';
+        numEl.className   = 'countdown__number';
         numEl.textContent = String(current);
-        // 애니메이션 재시작 (요소 clone trick)
         numEl.style.animation = 'none';
-        void numEl.offsetWidth; // reflow
+        void numEl.offsetWidth;
         numEl.style.animation = '';
         current--;
         this._countdownTimer = setTimeout(tick, 900);
       } else {
-        // "GO!"
-        numEl.className = 'countdown__number go';
+        numEl.className   = 'countdown__number go';
         numEl.textContent = 'GO!';
         numEl.style.animation = 'none';
         void numEl.offsetWidth;
@@ -143,10 +107,7 @@ export class GameHUD {
         this._countdownTimer = setTimeout(() => {
           overlay.style.transition = 'opacity 0.2s ease';
           overlay.style.opacity    = '0';
-          setTimeout(() => {
-            overlay.style.display = 'none';
-            onDone?.();
-          }, 220);
+          setTimeout(() => { overlay.style.display = 'none'; onDone?.(); }, 220);
         }, 700);
       }
     };
@@ -161,12 +122,12 @@ export class GameHUD {
    * @param {() => void} onMenu
    */
   showGameOver({ score = 0, bestScore = 0 }, onReplay, onMenu) {
-    const overlay = this._els.gameover;
+    const overlay   = this._els.gameover;
     if (!overlay) return;
 
-    const scoreEl = overlay.querySelector('.gameover-overlay__score .score-display');
-    const bestEl  = overlay.querySelector('.gameover-overlay__best-score');
-    const badgeEl = overlay.querySelector('.gameover-overlay__best-badge');
+    const scoreEl   = overlay.querySelector('.gameover-overlay__score .score-display');
+    const bestEl    = overlay.querySelector('.gameover-overlay__best-score');
+    const badgeEl   = overlay.querySelector('.gameover-overlay__best-badge');
     const replayBtn = overlay.querySelector('[data-action="replay"]');
     const menuBtn   = overlay.querySelector('[data-action="menu"]');
 
@@ -174,30 +135,17 @@ export class GameHUD {
     if (bestEl)  bestEl.textContent  = String(bestScore).padStart(6, '0');
 
     const isNewBest = score > 0 && score >= bestScore;
-    if (badgeEl)  badgeEl.style.display = isNewBest ? 'block' : 'none';
+    if (badgeEl) badgeEl.style.display = isNewBest ? 'block' : 'none';
 
-    if (replayBtn) {
-      replayBtn.onclick = () => {
-        overlay.style.display = 'none';
-        onReplay?.();
-      };
-    }
-    if (menuBtn) {
-      menuBtn.onclick = () => {
-        overlay.style.display = 'none';
-        onMenu?.();
-      };
-    }
+    if (replayBtn) replayBtn.onclick = () => { overlay.style.display = 'none'; onReplay?.(); };
+    if (menuBtn)   menuBtn.onclick   = () => { overlay.style.display = 'none'; onMenu?.(); };
 
-    overlay.style.display = 'flex';
-    overlay.style.opacity = '0';
+    overlay.style.display    = 'flex';
+    overlay.style.opacity    = '0';
     overlay.style.transition = 'opacity 0.4s ease';
-    requestAnimationFrame(() => {
-      if (overlay) overlay.style.opacity = '1';
-    });
+    requestAnimationFrame(() => { if (overlay) overlay.style.opacity = '1'; });
   }
 
-  /** 완전 제거 */
   destroy() {
     this._clearCountdown();
     if (this._root && this._root.parentNode) {
@@ -217,34 +165,13 @@ export class GameHUD {
     el.setAttribute('aria-atomic', 'false');
 
     el.innerHTML = `
-      <!-- 상단 HUD -->
-      <div class="hud-top">
-        <!-- 좌상단: 점수 -->
-        <div class="hud-score-block" aria-label="점수">
-          <div class="score-display__label">SCORE</div>
-          <div class="score-display" id="hud-score">000000</div>
-        </div>
-
-        <!-- 우상단: 시간 -->
-        <div class="hud-timer-block" id="hud-timer" aria-label="남은 시간">
-          00:00
-        </div>
-      </div>
-
-      <!-- 하단 HUD -->
+      <!-- 하단 HUD: 목숨 + FPS -->
       <div class="hud-bottom">
-        <!-- 좌하단: 목숨 -->
-        <div class="hud-lives-block" aria-label="목숨">
+        <div class="hud-lives-block" id="hud-lives-block" aria-label="목숨" style="display:none;">
           <div class="lives-display__label">LIVES</div>
-          <div class="lives-display" id="hud-lives">
-            ${this._renderHearts(MAX_LIVES)}
-          </div>
+          <div class="lives-display" id="hud-lives"></div>
         </div>
-
-        <!-- 우하단: FPS -->
-        <div class="hud-fps-block" id="hud-fps" aria-hidden="true">
-          FPS: --
-        </div>
+        <div class="hud-fps-block" id="hud-fps" aria-hidden="true">FPS: --</div>
       </div>
 
       <!-- 카운트다운 오버레이 -->
@@ -253,7 +180,8 @@ export class GameHUD {
       </div>
 
       <!-- 게임오버 오버레이 -->
-      <div class="gameover-overlay" id="hud-gameover" style="display:none;" aria-modal="true" role="dialog" aria-label="게임 오버">
+      <div class="gameover-overlay" id="hud-gameover" style="display:none;"
+           aria-modal="true" role="dialog" aria-label="게임 오버">
         <h2 class="gameover-overlay__title">GAME OVER</h2>
 
         <div class="gameover-overlay__score-section">
@@ -261,15 +189,10 @@ export class GameHUD {
           <div class="gameover-overlay__score">
             <div class="score-display text-cyan">000000</div>
           </div>
-
-          <div class="gameover-overlay__best-badge" style="display:none;">
-            ★ NEW BEST ★
-          </div>
-
+          <div class="gameover-overlay__best-badge" style="display:none;">★ NEW BEST ★</div>
           <div class="score-display__label" style="margin-top:8px;">BEST</div>
-          <div class="gameover-overlay__best-score score-display text-yellow" style="font-size:clamp(1.2rem,4vw,1.6rem);">
-            000000
-          </div>
+          <div class="gameover-overlay__best-score score-display text-yellow"
+               style="font-size:clamp(1.2rem,4vw,1.6rem);">000000</div>
         </div>
 
         <div class="gameover-overlay__actions">
@@ -297,9 +220,7 @@ export class GameHUD {
     this._container.appendChild(el);
     this._root = el;
 
-    // DOM 캐싱
-    this._els.score        = el.querySelector('#hud-score');
-    this._els.timer        = el.querySelector('#hud-timer');
+    this._els.livesBlock   = el.querySelector('#hud-lives-block');
     this._els.lives        = el.querySelector('#hud-lives');
     this._els.fps          = el.querySelector('#hud-fps');
     this._els.countdown    = el.querySelector('#hud-countdown');
@@ -307,7 +228,7 @@ export class GameHUD {
     this._els.gameover     = el.querySelector('#hud-gameover');
   }
 
-  _renderHearts(total, active = total) {
+  _renderHearts(total, active) {
     return Array.from({ length: total }, (_, i) =>
       `<span class="lives-display__heart${i >= active ? ' lost' : ''}"
              aria-label="${i < active ? '목숨' : '잃은 목숨'}">${i < active ? HEART_FULL : HEART_LOST}</span>`
@@ -316,10 +237,9 @@ export class GameHUD {
 
   _updateLives(count) {
     const el = this._els.lives;
-    if (!el) return;
-    const total  = MAX_LIVES;
-    const active = Math.max(0, Math.min(count, total));
-    el.innerHTML = this._renderHearts(total, active);
+    if (!el || !this._livesMax) return;
+    const active = Math.max(0, Math.min(count, this._livesMax));
+    el.innerHTML = this._renderHearts(this._livesMax, active);
   }
 
   _clearCountdown() {
@@ -327,8 +247,6 @@ export class GameHUD {
       clearTimeout(this._countdownTimer);
       this._countdownTimer = null;
     }
-    if (this._els.countdown) {
-      this._els.countdown.style.display = 'none';
-    }
+    if (this._els.countdown) this._els.countdown.style.display = 'none';
   }
 }

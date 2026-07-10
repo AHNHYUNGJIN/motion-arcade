@@ -100,7 +100,7 @@ export class ObstacleDodge extends BaseGame {
       // collision: player circle vs pipe rects
       const topH = pipe.gapCenter - pipe.gapH / 2;
       const botY = pipe.gapCenter + pipe.gapH / 2;
-      const botH = this.height - botY;
+      const botH = this.height;
 
       const pipeLeft = this.width / 2 - PIPE_W / 2;
       const pipeRight = this.width / 2 + PIPE_W / 2;

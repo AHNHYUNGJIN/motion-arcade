@@ -98,7 +98,7 @@ export class GestureRecognizer {
     if (lHip && rHip) {
       const hipY = (lHip.y + rHip.y) / 2;
       // "above" = smaller y value in image coordinates
-      const threshold = this._cal.hipY * 0.8; // 20 % above baseline
+      const threshold = this._cal.hipY * 0.88; // 12 % above baseline — 실제 점프로 달성 가능한 값
       this._isJumping = hipY < threshold;
     }
 
