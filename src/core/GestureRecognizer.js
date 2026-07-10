@@ -81,7 +81,7 @@ export class GestureRecognizer {
       const midX = (lShoulder.x + rShoulder.x) / 2;
       // Normalize relative to calibration center; ±half-screen = ±1
       this._bodyX = clamp(
-        (midX - this._cal.centerX) / (this.__w / 2 || this._w / 2),
+        (midX - this._cal.centerX) / (this._w / 2),
         -1,
         1
       );
